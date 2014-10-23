@@ -59,6 +59,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     private SparseArray<BluetoothDevice> devices;
     private BluetoothGatt connectedGatt;
     private ProgressDialog progress;
+    private boolean isConnected = false;
 
     private TextView deviceName, deviceAddress, deviceConnected;
 
@@ -144,6 +145,8 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                 /* Obtain the discovered device to connect with */
                 BluetoothDevice device = devices.get(item.getItemId());
                 Log.i(TAG, "Connecting to " + device.getName());
+                setDeviceName(device.getName());
+                setDeviceAddress(device.getAddress());
                 /*
                  * Make a connection with the device using the special LE-specific
                  * connectGatt() method, passing in a callback for GATT events
@@ -195,19 +198,11 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     /* Callback for GATT */
     private BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
 
-        private void authenticate(BluetoothGatt gatt) {
-            /* Writing authentication code */
-            BluetoothGattCharacteristic auth_char = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_AUTH_CHAR);
-//            auth_char.setValue(AUTH_CODE);
-            auth_char.setValue("60955b1f2542fccd55615f1e76debae1".getBytes(StandardCharsets.US_ASCII));
-            gatt.writeCharacteristic(auth_char);
-        }
-
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             Log.d(TAG, "Connection State Change: "+status+" -> "+connectionState(newState));
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
+                isConnected = true;
                 /*
                  * Once successfully connected, we must next discover all the services on the
                  * device before we can read and write their characteristics.
@@ -215,22 +210,24 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                 gatt.discoverServices();
 
                 handler.sendMessage(Message.obtain(null, MSG_PROGRESS, "Discovering Services..."));
-                handler.sendEmptyMessage(MSG_CONNECTED);
+                handler.sendEmptyMessage(MSG_CONNECTION_STATUS);
 
             } else if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_DISCONNECTED) {
+                isConnected = false;
                 /*
                  * If at any point we disconnect, send a message to clear the weather values
                  * out of the UI
                  */
                 handler.sendEmptyMessage(MSG_CLEAR);
                 handler.sendEmptyMessage(MSG_DISMISS);
-                handler.sendEmptyMessage(MSG_DISCONNECTED);
+                handler.sendEmptyMessage(MSG_CONNECTION_STATUS);
             } else if (status != BluetoothGatt.GATT_SUCCESS) {
                 /*
                  * If there is a failure at any stage, simply disconnect
                  */
                 gatt.disconnect();
-                handler.sendEmptyMessage(MSG_DISCONNECTED);
+                isConnected = false;
+                handler.sendEmptyMessage(MSG_CONNECTION_STATUS);
             }
         }
         @Override
@@ -280,6 +277,15 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
             }
         }
 
+        private void authenticate(BluetoothGatt gatt) {
+            /* Writing authentication code */
+            BluetoothGattCharacteristic auth_char = gatt.getService(RECEIVER_SERVICE)
+                    .getCharacteristic(RECEIVER_AUTH_CHAR);
+//            auth_char.setValue(AUTH_CODE);
+            auth_char.setValue(AUTH_CODE);
+            gatt.writeCharacteristic(auth_char);
+        }
+
         private String byteArrayToString(byte[] bytes) {
             String result = "";
             for (byte b : bytes) {
@@ -293,12 +299,11 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     private static final int MSG_PROGRESS = 101;
     private static final int MSG_DISMISS = 102;
     private static final int MSG_CLEAR = 201;
-    private static final int MSG_CONNECTED = 301;
-    private static final int MSG_DISCONNECTED = 302;
+    private static final int MSG_CONNECTION_STATUS = 301;
     private Handler handler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
-            BluetoothGattCharacteristic characteristic;
+            //BluetoothGattCharacteristic characteristic;
             switch (msg.what) {
                 case MSG_PROGRESS:
                     progress.setMessage((String) msg.obj);
@@ -312,11 +317,9 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                 case MSG_CLEAR:
                     clearDisplay();
                     break;
-                case MSG_CONNECTED:
-                    setIsConnected(true);
+                case MSG_CONNECTION_STATUS:
+                    setIsConnected(isConnected);
                     break;
-                case MSG_DISCONNECTED:
-                    setIsConnected(false);
             }
         }
     };
