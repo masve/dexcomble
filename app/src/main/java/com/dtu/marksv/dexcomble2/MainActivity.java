@@ -14,7 +14,10 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -24,6 +27,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.Window;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -66,14 +70,16 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     public static final String STATUS_VALID = "1";
     public static final String STATUS_INVALID = "0";
     public static final String STATUS_NOT_ENTERED = "X";
-    
+
     private BluetoothAdapter bluetoothAdapter;
     private SparseArray<BluetoothDevice> devices;
     private BluetoothGatt connectedGatt;
     private ProgressDialog progress;
     private boolean isConnected = false;
 
-    private TextView deviceName, deviceAddress, deviceConnected;
+    private TextView nameTextView, addressTextView, deviceTypeTextView, bondTextView;
+    private TextView connectedTextView, authTextView;
+    private TextView sugarTextView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,15 +88,23 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         setContentView(R.layout.activity_main);
 
         /* Initiate UI components */
-        deviceName = (TextView) findViewById(R.id.deviceName);
-        deviceAddress = (TextView) findViewById(R.id.deviceAddress);
-        deviceConnected = (TextView) findViewById(R.id.isConnected);
+        nameTextView = (TextView) findViewById(R.id.nameTextView);
+        addressTextView = (TextView) findViewById(R.id.addressTextView);
+        connectedTextView = (TextView) findViewById(R.id.connectedTextView);
+        authTextView = (TextView) findViewById(R.id.authTextView);
+        deviceTypeTextView = (TextView) findViewById(R.id.deviceTypeTextView);
+        bondTextView = (TextView) findViewById(R.id.bondTextView);
+        sugarTextView = (TextView) findViewById(R.id.sugarTextView);
 
         /* Initiate bluetooth */
         BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         bluetoothAdapter = manager.getAdapter();
 
         devices = new SparseArray<BluetoothDevice>();
+
+        /* Setting Receivers */
+        IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+        this.registerReceiver(bluetoothReceiver, filter);
 
         /* Initiate progress window */
         progress = new ProgressDialog(this);
@@ -138,7 +152,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         /* Add the "scan" option to the menu */
         getMenuInflater().inflate(R.menu.main, menu);
         /* Add any device elements we've discovered to the overflow menu */
-        for (int i=0; i < devices.size(); i++) {
+        for (int i = 0; i < devices.size(); i++) {
             BluetoothDevice device = devices.valueAt(i);
             menu.add(0, devices.keyAt(i), 0, device.getName());
         }
@@ -150,15 +164,23 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.action_scan:
+                setProgressBarIndeterminateVisibility(true);
+
                 devices.clear();
-                startScan();
+
+                /**
+                 * Disable bluetooth.
+                 * Receiver listens on disable event and enables bluetooth again.
+                 * When bluetooth is on, start scan.
+                 */
+//                startScan();
+                bluetoothAdapter.disable();
                 return true;
             default:
                 /* Obtain the discovered device to connect with */
                 BluetoothDevice device = devices.get(item.getItemId());
                 Log.i(TAG, "Connecting to " + device.getName());
-                setDeviceName(device.getName());
-                setDeviceAddress(device.getAddress());
+                setDeviceInfo(device);
                 /*
                  * Make a connection with the device using the special LE-specific
                  * connectGatt() method, passing in a callback for GATT events
@@ -183,9 +205,25 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         }
     };
 
+
+    /*  */
+    private final BroadcastReceiver bluetoothReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final int state = intent.getExtras().getInt(BluetoothAdapter.EXTRA_STATE);
+            if (state == BluetoothAdapter.STATE_OFF) {
+                Log.d(TAG, "Restarting bluetooth adapter...");
+                bluetoothAdapter.enable();
+            } else if (state == BluetoothAdapter.STATE_ON) {
+                Log.d(TAG, "Starting Scan...");
+                startScan();
+            }
+        }
+    };
+
+
     private void startScan() {
         bluetoothAdapter.startLeScan(this);
-        setProgressBarIndeterminateVisibility(true);
 
         handler.postDelayed(stopRunnable, 2500);
     }
@@ -212,7 +250,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-            Log.d(TAG, "Connection State Change: "+status+" -> "+connectionState(newState));
+            Log.d(TAG, "Connection State Change: " + status + " -> " + connectionState(newState));
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
                 isConnected = true;
                 /*
@@ -244,6 +282,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                 handler.sendEmptyMessage(MSG_CONNECTION_STATUS);
             }
         }
+
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             Log.d(TAG, "Services Discovered");
@@ -266,11 +305,11 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
             if (characteristic.getUuid().equals(RECEIVER_STATUS_CHAR)) {
                 String statusCode = new String(characteristic.getValue());
                 String statusStr = "";
-                
+
                 if (statusCode.equals(STATUS_VALID)) {
                     statusStr = "VALID";
                     handler.sendEmptyMessage(MSG_DISMISS);
-                } else if (statusCode.equals(STATUS_INVALID)){
+                } else if (statusCode.equals(STATUS_INVALID)) {
                     statusStr = "INVALID";
                 } else if (statusCode.equals(STATUS_NOT_ENTERED)) {
                     statusStr = "CODE NOT ENTERED";
@@ -281,17 +320,20 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                     advance();
                     stateMachine(gatt);
                 }
+
+                handler.sendMessage(Message.obtain(null, MSG_AUTH_STATUS, statusStr));
             }
             if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
                 Log.d(TAG, "Read some Characteristic Value: ");
                 for (int i = 0; i < characteristic.getValue().length; i++) {
-                    Log.d(TAG, "array["+i+"] : " + characteristic.getValue()[i]);
+                    Log.d(TAG, " - array[" + i + "] : " + characteristic.getValue()[i]);
                 }
             }
 
 //            setNextNotify(gatt);
 //            setNextNotify(gatt);
         }
+
         @Override
         public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
             /* Check authentication status, if auth char is written to */
@@ -303,6 +345,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                 gatt.readCharacteristic(status_char);
             }
         }
+
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             if (characteristic.getUuid().equals(RECEIVER_STATUS_CHAR)) {
@@ -324,7 +367,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
         @Override
         public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
-            Log.d(TAG, "Remote RSSI: "+rssi);
+            Log.d(TAG, "Remote RSSI: " + rssi);
         }
 
         private String connectionState(int status) {
@@ -343,8 +386,14 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         }
 
         private int state = 0;
-        private void reset() { state = 0; }
-        private void advance() { state++; }
+
+        private void reset() {
+            state = 0;
+        }
+
+        private void advance() {
+            state++;
+        }
 
         public void stateMachine(BluetoothGatt gatt) {
             switch (state) {
@@ -365,6 +414,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
             authChar.setValue(AUTH_CODE);
             gatt.writeCharacteristic(authChar);
         }
+
         private void readCharacteristic(BluetoothGatt gatt) {
             BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
                     .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
@@ -373,11 +423,15 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         }
     };
 
-    /* Handler */
+    /**
+     *  Handler
+     *  Handles UI updates from callback background thread to UI thread.
+     */
     private static final int MSG_PROGRESS = 101;
     private static final int MSG_DISMISS = 102;
     private static final int MSG_CLEAR = 201;
     private static final int MSG_CONNECTION_STATUS = 301;
+    private static final int MSG_AUTH_STATUS = 302;
     private static final int MSG_STATUS = 401;
     private Handler handler = new Handler() {
         @Override
@@ -394,10 +448,13 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                     progress.hide();
                     break;
                 case MSG_CLEAR:
-                    clearDisplay();
+                    //clearDisplay();
                     break;
                 case MSG_CONNECTION_STATUS:
-                    setIsConnected(isConnected);
+                    setConnectionStatus(isConnected);
+                    break;
+                case MSG_AUTH_STATUS:
+                    setAuthStatus((String) msg.obj);
                     break;
                 case MSG_STATUS:
                     characteristic = (BluetoothGattCharacteristic) msg.obj;
@@ -417,20 +474,61 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     };
 
     /* Methods to update the UI */
-    public void setDeviceName(String name) {
-        deviceName.setText(name);
+    public void setNameTextView(String name) {
+        nameTextView.setText(name);
     }
 
-    public void setDeviceAddress(String address) {
-        deviceName.setText(address);
+    public void setAddressTextView(String address) {
+        addressTextView.setText(address);
     }
 
-    public void setIsConnected(boolean isConnected) {
-        deviceConnected.setText(""+isConnected);
+    public void setDeviceInfo(BluetoothDevice device) {
+        nameTextView.setText(device.getName());
+        addressTextView.setText(device.getAddress());
+
+        String deviceType = "---";
+
+        switch (device.getType()) {
+            case BluetoothDevice.DEVICE_TYPE_CLASSIC:
+                deviceType = "DEVICE_TYPE_CLASSIC";
+                break;
+            case BluetoothDevice.DEVICE_TYPE_DUAL:
+                deviceType = "DEVICE_TYPE_DUAL";
+                break;
+            case BluetoothDevice.DEVICE_TYPE_LE:
+                deviceType = "DEVICE_TYPE_LE";
+                break;
+            case BluetoothDevice.DEVICE_TYPE_UNKNOWN:
+                deviceType = "DEVICE_TYPE_UNKNOWN";
+                break;
+        }
+
+        deviceTypeTextView.setText(deviceType);
+
+        String bond = "---";
+
+        switch (device.getBondState()) {
+            case BluetoothDevice.BOND_BONDED:
+                bond = "BOND_BONDED";
+                break;
+            case BluetoothDevice.BOND_BONDING:
+                bond = "BOND_BONDING";
+                break;
+            case BluetoothDevice.BOND_NONE:
+                bond = "BOND_NONE";
+                break;
+        }
+
+        bondTextView.setText(bond);
     }
+
+    public void setConnectionStatus(boolean isConnected) { connectedTextView.setText("" + isConnected); }
+    public void setAuthStatus(String status) { authTextView.setText(status); }
+    public void setSugarLevel(String level) { authTextView.setText(level); }
 
     public void clearDisplay() {
-        deviceName.setText("---");
-        deviceAddress.setText("---");
+        nameTextView.setText("---");
+        addressTextView.setText("---");
+
     }
 }
