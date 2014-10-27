@@ -30,6 +30,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 
@@ -65,7 +66,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
     /* DESCRIPTORS */
     public static final UUID RECEIVER_STATUS_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
-    //public static final UUID RECEIVER_STATUS_CONFIG = UUID.fromString("00002904-0000-1000-8000-00805f9b34fb");
+    public static final UUID RECEIVER_ARRAY_CLIENT_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     public static final String STATUS_VALID = "1";
     public static final String STATUS_INVALID = "0";
@@ -401,9 +402,18 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                     authenticate(gatt);
                     break;
                 case 1:
-                    readCharacteristic(gatt);
+                    //readCharacteristic(gatt);
+                    getDescInfo(gatt);
                     break;
             }
+        }
+
+        private void setNotify(BluetoothGatt gatt) {
+
+        }
+
+        private void sendCommand(BluetoothGatt gatt) {
+
         }
 
         private void authenticate(BluetoothGatt gatt) {
@@ -417,9 +427,20 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
         private void readCharacteristic(BluetoothGatt gatt) {
             BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
+                    .getCharacteristic(RECEIVER_SMARTPHONE_CMD_CHAR);
+
             Log.d(TAG, "Reading Characteristic: " + characteristic.getUuid().toString());
             gatt.readCharacteristic(characteristic);
+        }
+
+        private void getDescInfo(BluetoothGatt gatt) {
+            List<BluetoothGattCharacteristic> listChars = gatt.getService(RECEIVER_SERVICE)
+                    .getCharacteristics();
+            for (BluetoothGattCharacteristic entry : listChars) {
+                for (BluetoothGattDescriptor desc : entry.getDescriptors()) {
+                    Log.d(TAG, "CHAR: " + entry.getUuid().toString() + " / DESC: " + desc.getUuid().toString());
+                }
+            }
         }
     };
 
