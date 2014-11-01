@@ -1,5 +1,7 @@
 package com.dtu.marksv.dexcomble2;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.zip.CRC32;
 
 /**
@@ -7,6 +9,7 @@ import java.util.zip.CRC32;
  */
 public class PacketManager {
     private final static byte[] ping = {0x01, 0x01, 0x01, 0x06, 0x00, 0x0A, 0x5E, 0x65};
+
 
     /* A Get Page Range Message: */
     public final static byte[] pageRange = {0x01, 0x01, 0x01, 0x07, 0x00, 0x10, 0x00, 0x0F, (byte)0xF8};
@@ -52,6 +55,8 @@ public class PacketManager {
             littlePing[i] = littlePing[j];
             littlePing[j] = b;
         }
+//        ByteBuffer bb = ByteBuffer.wrap(cmd);
+//        bb.order(ByteOrder.BIG_ENDIAN);
         return littlePing;
     }
 }

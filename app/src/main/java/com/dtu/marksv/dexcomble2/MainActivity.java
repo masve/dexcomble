@@ -278,6 +278,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                  */
                 gatt.disconnect();
                 gatt.close();
+                gatt = null;
                 isConnected = false;
                 handler.sendEmptyMessage(MSG_CLEAR);
                 handler.sendEmptyMessage(MSG_DISMISS);
@@ -326,12 +327,12 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                 handler.sendMessage(Message.obtain(null, MSG_AUTH_STATUS, statusStr));
             }
 
-//            if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
-//                Log.d(TAG, "Reading result from server");
-//                for (int i = 0; i < characteristic.getValue().length; i++) {
-//                    Log.d(TAG, " - array[" + i + "] : " + characteristic.getValue()[i]);
-//                }
-//            }
+            if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
+                Log.d(TAG, "Reading result from server");
+                for (int i = 0; i < characteristic.getValue().length; i++) {
+                    Log.d(TAG, " - array[" + i + "] : " + characteristic.getValue()[i]);
+                }
+            }
 
 
 //            setNextNotify(gatt);
@@ -348,13 +349,11 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                 /* Read the authentication ack response */
                 gatt.readCharacteristic(status_char);
             }
-//            if (characteristic.getUuid().equals(RECEIVER_ARRAY_SVR_CHAR)) {
-//                Log.d(TAG, "Pinged device!");
-//                BluetoothGattCharacteristic result_char = gatt.getService(RECEIVER_SERVICE)
-//                        .getCharacteristic(RECEIVER_ARRAY_SVR_CHAR);
-//
-//                gatt.readCharacteristic(result_char);
-//            }
+            if (characteristic.getUuid().equals(RECEIVER_ARRAY_SVR_CHAR)) {
+                Log.d(TAG, "Command Written!");
+                advance();
+                stateMachine(gatt);
+            }
         }
 
         @Override
@@ -416,10 +415,10 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
         public void stateMachine(BluetoothGatt gatt) {
             switch (state) {
-                case 0:
+                case 1:
                     authenticate(gatt);
                     break;
-                case 1:
+                case 0:
                     /* Set Notify for Responses */
                     setNotify(gatt);
                     break;
@@ -427,6 +426,8 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 //                    readCharacteristic(gatt);
 //                    getDescInfo(gatt);
                     pingDevice(gatt);
+                case 3:
+                    readCmdReponse(gatt);
                     break;
             }
         }
@@ -450,10 +451,6 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
             gatt.writeDescriptor(desc);
         }
 
-        private void sendCommand(BluetoothGatt gatt) {
-
-        }
-
         private void authenticate(BluetoothGatt gatt) {
             /* Writing authentication code */
             Log.d(TAG, "Authenticating...");
@@ -463,11 +460,11 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
             gatt.writeCharacteristic(authChar);
         }
 
-        private void readCharacteristic(BluetoothGatt gatt) {
+        private void readCmdReponse(BluetoothGatt gatt) {
+            Log.d(TAG, "Reading command response...");
             BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_SMARTPHONE_CMD_CHAR);
+                    .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
 
-            Log.d(TAG, "Reading Characteristic: " + characteristic.getUuid().toString());
             gatt.readCharacteristic(characteristic);
         }
 
