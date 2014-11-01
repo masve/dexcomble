@@ -9,6 +9,7 @@ import java.util.zip.CRC32;
  */
 public class PacketManager {
     private final static byte[] ping = {0x01, 0x01, 0x01, 0x06, 0x00, 0x0A, 0x5E, 0x65};
+    private final static byte[] ping2 = {0x01, 0x01, 0x01, 0x06, 0x00, 0x0A};
 
 
     /* A Get Page Range Message: */

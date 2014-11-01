@@ -38,9 +38,10 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
     public static final String TAG = "BluetoothGatt";
 
-    public static final String DEVICE_NAME = "DEXCOMRX";
-    public static final String EXTENDED_SN = "SM42390263000000";
-    public static byte[] AUTH_CODE = EXTENDED_SN.getBytes(StandardCharsets.US_ASCII);
+    public static final String DEVICE_NAME =  "DEXCOMRX";
+    public static final String EXTENDED_SN =  "SM42390263000000";
+    public static final String EXTENDED_SN2 = "SM42390264000000";
+    public static byte[] AUTH_CODE = EXTENDED_SN2.getBytes(StandardCharsets.US_ASCII);
 
     /* SERVICE: Device Information  */
     public static final UUID INFO_SERVICE = UUID.fromString("0000180A-0000-1000-8000-00805F9B34FB");
@@ -351,8 +352,9 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
             }
             if (characteristic.getUuid().equals(RECEIVER_ARRAY_SVR_CHAR)) {
                 Log.d(TAG, "Command Written!");
-                advance();
-                stateMachine(gatt);
+//                advance();
+//                stateMachine(gatt);
+                readCmdReponse(gatt);
             }
         }
 
@@ -426,9 +428,9 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 //                    readCharacteristic(gatt);
 //                    getDescInfo(gatt);
                     pingDevice(gatt);
-                case 3:
-                    readCmdReponse(gatt);
-                    break;
+//                case 3:
+//                    readCmdReponse(gatt);
+//                    break;
             }
         }
 
