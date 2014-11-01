@@ -38,40 +38,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
     public static final String TAG = "BluetoothGatt";
 
-    public static final String DEVICE_NAME =  "DEXCOMRX";
-    public static final String EXTENDED_SN =  "SM42390263000000";
-    public static final String EXTENDED_SN2 = "SM42390264000000";
-    public static byte[] AUTH_CODE = EXTENDED_SN2.getBytes(StandardCharsets.US_ASCII);
-
-    /* SERVICE: Device Information  */
-    public static final UUID INFO_SERVICE = UUID.fromString("0000180A-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_MODEL_NUMBER_CHAR = UUID.fromString("00002A24-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_HARDWARE_REVISION_CHAR = UUID.fromString("00002A27-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_FIRMWARE_REVISION_CHAR = UUID.fromString("00002A26-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_MANUFACTURER_NAME_CHAR = UUID.fromString("00002A29-0000-1000-8000-00805F9B34FB");
-
-    /* SERVICE: TX Power  */
-    public static final UUID TX_POWER_SERVICE = UUID.fromString("00001804-0000-1000-8000-00805F9B34FB");
-    public static final UUID TX_POWER_LEVEL_CHAR = UUID.fromString("00002A07-0000-1000-8000-00805F9B34FB");
-
-    /* SERVICE: Gen4RcvService  */
-    public static final UUID RECEIVER_SERVICE = UUID.fromString("F0ACA0B1-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_AUTH_CHAR = UUID.fromString("F0ACACAC-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_STATUS_CHAR = UUID.fromString("F0ACB0CD-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_HEARTBEAT_CHAR = UUID.fromString("F0AC2B18-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_ARRAY_SVR_CHAR = UUID.fromString("F0ACB20A-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_ARRAY_CLIENT_CHAR = UUID.fromString("F0ACB20B-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_SMARTPHONE_CMD_CHAR = UUID.fromString("F0ACB0CC-EBFA-F96F-28DA-076C35A521DB");
-
-    /* SERVICE: ShareTestService  */
-
-    /* DESCRIPTORS */
-    public static final UUID RECEIVER_STATUS_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
-    public static final UUID RECEIVER_ARRAY_CLIENT_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
-
-    public static final String STATUS_VALID = "1";
-    public static final String STATUS_INVALID = "0";
-    public static final String STATUS_NOT_ENTERED = "X";
+    public static final String DEVICE_NAME = "DEXCOMRX";
 
     private BluetoothAdapter bluetoothAdapter;
     private SparseArray<BluetoothDevice> devices;
@@ -82,6 +49,8 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     private TextView nameTextView, addressTextView, deviceTypeTextView, bondTextView;
     private TextView connectedTextView, authTextView;
     private TextView sugarTextView;
+
+    private Handler handler = new Handler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -117,6 +86,8 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     @Override
     protected void onResume() {
         super.onResume();
+
+        registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
 
         /* Check if bluetooth is enabled. If not ask to enable it. */
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
@@ -187,11 +158,24 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                  * Make a connection with the device using the special LE-specific
                  * connectGatt() method, passing in a callback for GATT events
                  */
-                connectedGatt = device.connectGatt(this, false, gattCallback);
+                //connectedGatt = device.connectGatt(this, false, gattCallback);
+                startBLEService(device.getAddress());
+
                 //Display progress UI
-                handler.sendMessage(Message.obtain(null, MSG_PROGRESS, "Connecting to " + device.getName() + "..."));
+                setProgressMsg("Connecting to " + device.getName() + "...");
                 return super.onOptionsItemSelected(item);
         }
+    }
+
+    private void startBLEService(String address) {
+        Intent intent = new Intent(this, BLEService.class);
+//        Bundle extras = intent.getExtras();
+//        extras.putString("address", address);
+
+        Bundle extras = new Bundle();
+        extras.putString("address", address);
+        intent.putExtras(extras);
+        startService(intent);
     }
 
     private Runnable stopRunnable = new Runnable() {
@@ -247,305 +231,85 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         }
     }
 
-    /* Callback for GATT */
-    private BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
-
+    // Handles various events fired by the Service.
+    // ACTION_GATT_CONNECTED: connected to a GATT server.
+    // ACTION_GATT_DISCONNECTED: disconnected from a GATT server.
+    // ACTION_GATT_SERVICES_DISCOVERED: discovered GATT services.
+    // ACTION_DATA_AVAILABLE: received data from the device.  This can be a result of read
+    //                        or notification operations.
+    private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
-        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-            Log.d(TAG, "Connection State Change: " + status + " -> " + connectionState(newState));
-            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
-                isConnected = true;
-                /*
-                 * Once successfully connected, we must next discover all the services on the
-                 * device before we can read and write their characteristics.
-                 */
-                gatt.discoverServices();
+        public void onReceive(Context context, Intent intent) {
+            final String action = intent.getAction();
 
-                handler.sendMessage(Message.obtain(null, MSG_PROGRESS, "Discovering Services..."));
-                handler.sendEmptyMessage(MSG_CONNECTION_STATUS);
-
-            } else if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_DISCONNECTED) {
-                isConnected = false;
-                /*
-                 * If at any point we disconnect, send a message to clear the weather values
-                 * out of the UI
-                 */
-                handler.sendEmptyMessage(MSG_CLEAR);
-                handler.sendEmptyMessage(MSG_DISMISS);
-                handler.sendEmptyMessage(MSG_CONNECTION_STATUS);
-            } else if (status != BluetoothGatt.GATT_SUCCESS) {
-                /*
-                 * If there is a failure at any stage, simply disconnect
-                 */
-                gatt.disconnect();
-                gatt.close();
-                gatt = null;
-                isConnected = false;
-                handler.sendEmptyMessage(MSG_CLEAR);
-                handler.sendEmptyMessage(MSG_DISMISS);
-                handler.sendEmptyMessage(MSG_CONNECTION_STATUS);
-            }
-        }
-
-        @Override
-        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-            Log.d(TAG, "Services Discovered");
-            handler.sendMessage(Message.obtain(null, MSG_PROGRESS, "Securing Communication..."));
-
-            reset();
-//            readNextChar(gatt);
-//            setNextNotify(gatt);
-            stateMachine(gatt);
-//            BluetoothGattService service = gatt.getService(RECEIVER_SERVICE);
-//            BluetoothGattCharacteristic characteristic = service.getCharacteristic(RECEIVER_STATUS_CHAR);
-//
-//            gatt.readCharacteristic(characteristic);
-        }
-
-        @Override
-        public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            
-            /* If a read has been called on RECEIVER_STATUS_CHAR read authentication ack code  */
-            if (characteristic.getUuid().equals(RECEIVER_STATUS_CHAR)) {
-                String statusCode = new String(characteristic.getValue());
-                String statusStr = "";
-
-                if (statusCode.equals(STATUS_VALID)) {
-                    statusStr = "VALID";
-                    handler.sendEmptyMessage(MSG_DISMISS);
-                } else if (statusCode.equals(STATUS_INVALID)) {
-                    statusStr = "INVALID";
-                } else if (statusCode.equals(STATUS_NOT_ENTERED)) {
-                    statusStr = "CODE NOT ENTERED";
-                }
-
-                Log.d(TAG, "Authentication Status Response: " + statusStr);
-                if (statusStr.equals("VALID")) {
-                    advance();
-                    stateMachine(gatt);
-                }
-
-                handler.sendMessage(Message.obtain(null, MSG_AUTH_STATUS, statusStr));
+            if (action.equals(BLEService.MSG_PROGRESS)) {
+                String progressText = intent.getStringExtra(BLEService.EXTRA_DATA);
+                setProgressMsg(progressText);
+            } else if (action.equals(BLEService.MSG_DISMISS)) {
+                progress.hide();
+            } else if (action.equals(BLEService.MSG_CLEAR)) {
+                //clearDisplay();
+            } else if (action.equals(BLEService.MSG_CONNECTION_STATUS)) {
+                setConnectionStatus(intent.getStringExtra(BLEService.EXTRA_DATA));
+            } else if (action.equals(BLEService.MSG_AUTH_STATUS)) {
+                setAuthStatus(intent.getStringExtra(BLEService.EXTRA_DATA));
             }
 
-            if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
-                Log.d(TAG, "Reading result from server");
-                for (int i = 0; i < characteristic.getValue().length; i++) {
-                    Log.d(TAG, " - array[" + i + "] : " + characteristic.getValue()[i]);
-                }
-            }
-
-
-//            setNextNotify(gatt);
-//            setNextNotify(gatt);
         }
-
-        @Override
-        public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            /* Check authentication status, if auth char is written to */
-            if (characteristic.getUuid().equals(RECEIVER_AUTH_CHAR)) {
-                BluetoothGattCharacteristic status_char = gatt.getService(RECEIVER_SERVICE)
-                        .getCharacteristic(RECEIVER_STATUS_CHAR);
-
-                /* Read the authentication ack response */
-                gatt.readCharacteristic(status_char);
-            }
-            if (characteristic.getUuid().equals(RECEIVER_ARRAY_SVR_CHAR)) {
-                Log.d(TAG, "Command Written!");
-//                advance();
-//                stateMachine(gatt);
-                readCmdReponse(gatt);
-            }
-        }
-
-        @Override
-        public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            if (characteristic.getUuid().equals(RECEIVER_STATUS_CHAR)) {
-                handler.sendMessage(Message.obtain(null, MSG_STATUS, characteristic));
-            }
-            if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
-                Log.d(TAG, "Read some Characteristic Value: ");
-                for (int i = 0; i < characteristic.getValue().length; i++) {
-                    Log.d(TAG, " - array[" + i + "] : " + characteristic.getValue()[i]);
-                }
-            }
-        }
-
-        @Override
-        public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
-
-
-            if (descriptor.getUuid().equals(RECEIVER_ARRAY_CLIENT_CONFIG)) {
-//                BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-//                        .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
-//                gatt.readCharacteristic(characteristic);
-                Log.d(TAG, "Wrote to: " + RECEIVER_ARRAY_CLIENT_CONFIG.toString() + " Status: " + status);
-                advance();
-                stateMachine(gatt);
-            }
-        }
-
-        @Override
-        public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
-            Log.d(TAG, "Remote RSSI: " + rssi);
-        }
-
-        private String connectionState(int status) {
-            switch (status) {
-                case BluetoothProfile.STATE_CONNECTED:
-                    return "Connected";
-                case BluetoothProfile.STATE_DISCONNECTED:
-                    return "Disconnected";
-                case BluetoothProfile.STATE_CONNECTING:
-                    return "Connecting";
-                case BluetoothProfile.STATE_DISCONNECTING:
-                    return "Disconnecting";
-                default:
-                    return String.valueOf(status);
-            }
-        }
-
-        private int state = 0;
-
-        private void reset() {
-            state = 0;
-        }
-
-        private void advance() {
-            state++;
-        }
-
-        public void stateMachine(BluetoothGatt gatt) {
-            switch (state) {
-                case 1:
-                    authenticate(gatt);
-                    break;
-                case 0:
-                    /* Set Notify for Responses */
-                    setNotify(gatt);
-                    break;
-                case 2:
-//                    readCharacteristic(gatt);
-//                    getDescInfo(gatt);
-                    pingDevice(gatt);
-//                case 3:
-//                    readCmdReponse(gatt);
-//                    break;
-            }
-        }
-
-        private void setNotify(BluetoothGatt gatt) {
-            BluetoothGattCharacteristic characteristic;
-            switch (0) {
-                case 0:
-                    Log.d(TAG, "Setting Notify for Command Client Responses");
-                    characteristic = gatt.getService(RECEIVER_SERVICE)
-                            .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
-                    break;
-                default:
-                    return;
-            }
-            //Enable local notifications
-            gatt.setCharacteristicNotification(characteristic, true);
-            //Enabled remote notifications
-            BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
-            desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            gatt.writeDescriptor(desc);
-        }
-
-        private void authenticate(BluetoothGatt gatt) {
-            /* Writing authentication code */
-            Log.d(TAG, "Authenticating...");
-            BluetoothGattCharacteristic authChar = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_AUTH_CHAR);
-            authChar.setValue(AUTH_CODE);
-            gatt.writeCharacteristic(authChar);
-        }
-
-        private void readCmdReponse(BluetoothGatt gatt) {
-            Log.d(TAG, "Reading command response...");
-            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
-
-            gatt.readCharacteristic(characteristic);
-        }
-
-        private void pingDevice(BluetoothGatt gatt) {
-            Log.d(TAG, "Pinging device...");
-            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_ARRAY_SVR_CHAR);
-
-            byte[] ping = PacketManager.getPacket(PacketManager.PING);
-            Log.d(TAG, "Pinging with: ");
-            for (int i = 0; i < ping.length; i++) {
-                Log.d(TAG, " - array[" + i + "] : " + ping[i]);
-            }
-
-            characteristic.setValue(ping);
-            gatt.writeCharacteristic(characteristic);
-        }
-
-        private void getDescInfo(BluetoothGatt gatt) {
-            List<BluetoothGattCharacteristic> listChars = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristics();
-            for (BluetoothGattCharacteristic entry : listChars) {
-                for (BluetoothGattDescriptor desc : entry.getDescriptors()) {
-                    Log.d(TAG, "CHAR: " + entry.getUuid().toString() + " / DESC: " + desc.getUuid().toString());
-                }
-            }
-        }
-
     };
+
+
+
 
     /**
      * Handler
      * Handles UI updates from callback background thread to UI thread.
      */
-    private static final int MSG_PROGRESS = 101;
-    private static final int MSG_DISMISS = 102;
-    private static final int MSG_CLEAR = 201;
-    private static final int MSG_CONNECTION_STATUS = 301;
-    private static final int MSG_AUTH_STATUS = 302;
-    private static final int MSG_STATUS = 401;
-    private Handler handler = new Handler() {
-        @Override
-        public void handleMessage(Message msg) {
-            BluetoothGattCharacteristic characteristic;
-            switch (msg.what) {
-                case MSG_PROGRESS:
-                    progress.setMessage((String) msg.obj);
-                    if (!progress.isShowing()) {
-                        progress.show();
-                    }
-                    break;
-                case MSG_DISMISS:
-                    progress.hide();
-                    break;
-                case MSG_CLEAR:
-                    //clearDisplay();
-                    break;
-                case MSG_CONNECTION_STATUS:
-                    setConnectionStatus(isConnected);
-                    break;
-                case MSG_AUTH_STATUS:
-                    setAuthStatus((String) msg.obj);
-                    break;
-                case MSG_STATUS:
-                    characteristic = (BluetoothGattCharacteristic) msg.obj;
-                    if (characteristic.getValue() == null) {
-                        Log.w(TAG, "Error obtaining status value");
-                        return;
-                    }
-                    StringBuilder result = new StringBuilder();
-                    for (int i = 0; i < characteristic.getValue().length; i++) {
-                        result.append(characteristic.getValue()[i]);
-                    }
-
-                    Log.d(TAG, "Status Code: " + result.toString());
-                    break;
-            }
-        }
-    };
+//    public static final int MSG_PROGRESS = 101;
+//    public static final int MSG_DISMISS = 102;
+//    public static final int MSG_CLEAR = 201;
+//    public static final int MSG_CONNECTION_STATUS = 301;
+//    public static final int MSG_AUTH_STATUS = 302;
+//    public static final int MSG_STATUS = 401;
+//    private Handler handler = new Handler() {
+//        @Override
+//        public void handleMessage(Message msg) {
+//            BluetoothGattCharacteristic characteristic;
+//            switch (msg.what) {
+//                case MSG_PROGRESS:
+//                    progress.setMessage((String) msg.obj);
+//                    if (!progress.isShowing()) {
+//                        progress.show();
+//                    }
+//                    break;
+//                case MSG_DISMISS:
+//                    progress.hide();
+//                    break;
+//                case MSG_CLEAR:
+//                    //clearDisplay();
+//                    break;
+//                case MSG_CONNECTION_STATUS:
+//                    setConnectionStatus(isConnected);
+//                    break;
+//                case MSG_AUTH_STATUS:
+//                    setAuthStatus((String) msg.obj);
+//                    break;
+//                case MSG_STATUS:
+//                    characteristic = (BluetoothGattCharacteristic) msg.obj;
+//                    if (characteristic.getValue() == null) {
+//                        Log.w(TAG, "Error obtaining status value");
+//                        return;
+//                    }
+//                    StringBuilder result = new StringBuilder();
+//                    for (int i = 0; i < characteristic.getValue().length; i++) {
+//                        result.append(characteristic.getValue()[i]);
+//                    }
+//
+//                    Log.d(TAG, "Status Code: " + result.toString());
+//                    break;
+//            }
+//        }
+//    };
 
     /* Methods to update the UI */
     public void setNameTextView(String name) {
@@ -596,8 +360,8 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         bondTextView.setText(bond);
     }
 
-    public void setConnectionStatus(boolean isConnected) {
-        connectedTextView.setText("" + isConnected);
+    public void setConnectionStatus(String status) {
+        connectedTextView.setText(status);
     }
 
     public void setAuthStatus(String status) {
@@ -613,4 +377,24 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         addressTextView.setText("---");
 
     }
+
+    private void setProgressMsg(String progressText) {
+        progress.setMessage(progressText);
+        if (!progress.isShowing()) {
+            progress.show();
+        }
+    }
+
+
+    private static IntentFilter makeGattUpdateIntentFilter() {
+        final IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(BLEService.MSG_PROGRESS);
+        intentFilter.addAction(BLEService.MSG_DISMISS);
+        intentFilter.addAction(BLEService.MSG_CLEAR);
+        intentFilter.addAction(BLEService.MSG_CONNECTION_STATUS);
+        intentFilter.addAction(BLEService.MSG_AUTH_STATUS);
+        return intentFilter;
+    }
 }
+
+
