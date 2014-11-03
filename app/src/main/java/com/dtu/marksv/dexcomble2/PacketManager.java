@@ -31,6 +31,7 @@ public class PacketManager {
     public static byte[] getPacket(int cmd) {
         switch (cmd) {
             case PING:
+                //return ping;
                 return generatePacket(ping, false);
             case EGV_PAGE_RANGE:
                 return generatePacket(egvPageRangeNoCRC, true);

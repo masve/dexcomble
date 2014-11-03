@@ -272,16 +272,28 @@ public class BLEService extends Service {
                     Log.d(TAG, "Setting Notify for Command Client Responses");
                     characteristic = gatt.getService(RECEIVER_SERVICE)
                             .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
+                    //Enable local notifications
+                    gatt.setCharacteristicNotification(characteristic, true);
+                    //Enabled remote notifications
+                    BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
+                    desc.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
+                    gatt.writeDescriptor(desc);
                     break;
+                case 1:
+                    Log.d(TAG, "Setting Notify for Status Responses");
+                    characteristic = gatt.getService(RECEIVER_SERVICE)
+                            .getCharacteristic(RECEIVER_STATUS_CHAR);
+
+                    //Enable local notifications
+                    gatt.setCharacteristicNotification(characteristic, true);
+                    //Enabled remote notifications
+                    BluetoothGattDescriptor desc1 = characteristic.getDescriptor(RECEIVER_STATUS_CONFIG);
+                    desc1.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
+                    gatt.writeDescriptor(desc1);
                 default:
                     return;
             }
-            //Enable local notifications
-            gatt.setCharacteristicNotification(characteristic, true);
-            //Enabled remote notifications
-            BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
-            desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            gatt.writeDescriptor(desc);
+
         }
 
         private void authenticate(BluetoothGatt gatt) {
