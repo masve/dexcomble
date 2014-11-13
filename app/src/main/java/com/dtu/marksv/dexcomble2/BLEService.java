@@ -27,46 +27,47 @@ public class BLEService extends Service {
 
     private static final String TAG = "BLEService";
 
-    public static final String MSG_PROGRESS = "101";
-    public static final String MSG_DISMISS = "102";
-    public static final String MSG_CLEAR = "201";
-    public static final String MSG_CONNECTION_STATUS = "301";
-    public static final String MSG_AUTH_STATUS = "302";
-    public static final String EXTRA_DATA = "EXTRA_DATA";
+    public static final String MSG_PROGRESS =           "101";
+    public static final String MSG_DISMISS =            "102";
+    public static final String MSG_CLEAR =              "201";
+    public static final String MSG_CONNECTION_STATUS =  "301";
+    public static final String MSG_AUTH_STATUS =        "302";
+    public static final String EXTRA_DATA =             "EXTRA_DATA";
 
-    public static final String DEVICE_NAME = "DEXCOMRX";
-    public static final String EXTENDED_SN = "SM42390263000000";
-    public static final String EXTENDED_SN2 = "SM42390264000000";
-    public static byte[] AUTH_CODE = EXTENDED_SN2.getBytes(StandardCharsets.US_ASCII);
+    public static final String DEVICE_NAME =  "DEXCOMRX";
+    public static final String EXTENDED_SN1 = "SM42390263000000";
+    public static final String EXTENDED_SN2 = "SM42390264000000"; // dead
+    public static byte[] AUTH_CODE = EXTENDED_SN1.getBytes(StandardCharsets.US_ASCII);
 
     /* SERVICE: Device Information  */
-    public static final UUID INFO_SERVICE = UUID.fromString("0000180A-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_MODEL_NUMBER_CHAR = UUID.fromString("00002A24-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_HARDWARE_REVISION_CHAR = UUID.fromString("00002A27-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_FIRMWARE_REVISION_CHAR = UUID.fromString("00002A26-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_MANUFACTURER_NAME_CHAR = UUID.fromString("00002A29-0000-1000-8000-00805F9B34FB");
+    public static final UUID INFO_SERVICE =                 UUID.fromString("0000180A-0000-1000-8000-00805F9B34FB");
+    public static final UUID INFO_MODEL_NUMBER_CHAR =       UUID.fromString("00002A24-0000-1000-8000-00805F9B34FB");
+    public static final UUID INFO_HARDWARE_REVISION_CHAR =  UUID.fromString("00002A27-0000-1000-8000-00805F9B34FB");
+    public static final UUID INFO_FIRMWARE_REVISION_CHAR =  UUID.fromString("00002A26-0000-1000-8000-00805F9B34FB");
+    public static final UUID INFO_MANUFACTURER_NAME_CHAR =  UUID.fromString("00002A29-0000-1000-8000-00805F9B34FB");
 
     /* SERVICE: TX Power  */
-    public static final UUID TX_POWER_SERVICE = UUID.fromString("00001804-0000-1000-8000-00805F9B34FB");
-    public static final UUID TX_POWER_LEVEL_CHAR = UUID.fromString("00002A07-0000-1000-8000-00805F9B34FB");
+    public static final UUID TX_POWER_SERVICE =             UUID.fromString("00001804-0000-1000-8000-00805F9B34FB");
+    public static final UUID TX_POWER_LEVEL_CHAR =          UUID.fromString("00002A07-0000-1000-8000-00805F9B34FB");
 
     /* SERVICE: Gen4RcvService  */
-    public static final UUID RECEIVER_SERVICE = UUID.fromString("F0ACA0B1-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_AUTH_CHAR = UUID.fromString("F0ACACAC-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_STATUS_CHAR = UUID.fromString("F0ACB0CD-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_HEARTBEAT_CHAR = UUID.fromString("F0AC2B18-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_ARRAY_SVR_CHAR = UUID.fromString("F0ACB20A-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_ARRAY_CLIENT_CHAR = UUID.fromString("F0ACB20B-EBFA-F96F-28DA-076C35A521DB");
+    public static final UUID RECEIVER_SERVICE =             UUID.fromString("F0ACA0B1-EBFA-F96F-28DA-076C35A521DB");
+    public static final UUID RECEIVER_AUTH_CHAR =           UUID.fromString("F0ACACAC-EBFA-F96F-28DA-076C35A521DB");
+    public static final UUID RECEIVER_STATUS_CHAR =         UUID.fromString("F0ACB0CD-EBFA-F96F-28DA-076C35A521DB");
+    public static final UUID RECEIVER_HEARTBEAT_CHAR =      UUID.fromString("F0AC2B18-EBFA-F96F-28DA-076C35A521DB");
+    public static final UUID RECEIVER_ARRAY_SVR_CHAR =      UUID.fromString("F0ACB20A-EBFA-F96F-28DA-076C35A521DB");
+    public static final UUID RECEIVER_ARRAY_CLIENT_CHAR =   UUID.fromString("F0ACB20B-EBFA-F96F-28DA-076C35A521DB");
     public static final UUID RECEIVER_SMARTPHONE_CMD_CHAR = UUID.fromString("F0ACB0CC-EBFA-F96F-28DA-076C35A521DB");
 
     /* SERVICE: ShareTestService  */
 
     /* DESCRIPTORS */
-    public static final UUID RECEIVER_STATUS_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
+    public static final UUID RECEIVER_STATUS_CONFIG =       UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     public static final UUID RECEIVER_ARRAY_CLIENT_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
-    public static final String STATUS_VALID = "1";
-    public static final String STATUS_INVALID = "0";
+    /* RECEIVER_STATUS_CHAR response codes */
+    public static final String STATUS_VALID =       "1";
+    public static final String STATUS_INVALID =     "0";
     public static final String STATUS_NOT_ENTERED = "X";
 
     /* BLE Stuff */
@@ -176,8 +177,9 @@ public class BLEService extends Service {
 
             if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
                 Log.d(TAG, "Reading result from server");
-                for (int i = 0; i < characteristic.getValue().length; i++) {
-                    Log.d(TAG, " - array[" + i + "] : " + characteristic.getValue()[i]);
+                byte[] response = characteristic.getValue();
+                for (int i = 0; i < response.length; i++) {
+                    Log.d(TAG, " - array[" + i + "] : " + response[i]);
                 }
             }
         }
@@ -194,7 +196,7 @@ public class BLEService extends Service {
             }
             if (characteristic.getUuid().equals(RECEIVER_ARRAY_SVR_CHAR)) {
                 Log.d(TAG, "Command Written!");
-                readCmdReponse(gatt);
+
             }
         }
 
@@ -202,6 +204,9 @@ public class BLEService extends Service {
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             if (characteristic.getUuid().equals(RECEIVER_STATUS_CHAR)) {
                 Status(characteristic);
+            }
+            if (characteristic.getUuid().equals(RECEIVER_HEARTBEAT_CHAR)) {
+                Log.d(TAG, "HEARTBEAT");
             }
             if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
                 Log.d(TAG, "Read some Characteristic Value: ");
@@ -255,45 +260,61 @@ public class BLEService extends Service {
         public void stateMachine(BluetoothGatt gatt) {
             switch (state) {
                 case 0:
-                    setNotify(gatt);
-                    break;
-                case 1:
                     authenticate(gatt);
                     break;
+                case 1:
+                    setIndicate(gatt);
+                    break;
+//                case 1:
+//                    setNofity(gatt);
+//                    break;
                 case 2:
                     pingDevice(gatt);
+                    break;
+//                case 3:
+//                    readCmdReponse(gatt);
+//                    break;
+                default:
+                    Log.d(TAG, "stateMachine() default: " + state);
+                    break;
             }
         }
 
-        private void setNotify(BluetoothGatt gatt) {
-            BluetoothGattCharacteristic characteristic;
-            switch (0) {
-                case 0:
-                    Log.d(TAG, "Setting Notify for Command Client Responses");
-                    characteristic = gatt.getService(RECEIVER_SERVICE)
-                            .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
-                    //Enable local notifications
-                    gatt.setCharacteristicNotification(characteristic, true);
-                    //Enabled remote notifications
-                    BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
-                    desc.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
-                    gatt.writeDescriptor(desc);
-                    break;
-                case 1:
-                    Log.d(TAG, "Setting Notify for Status Responses");
-                    characteristic = gatt.getService(RECEIVER_SERVICE)
-                            .getCharacteristic(RECEIVER_STATUS_CHAR);
+        private void setNofity(BluetoothGatt gatt) {
+            Log.d(TAG, "Setting Notify for Heartbeat");
+            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
+                    .getCharacteristic(RECEIVER_HEARTBEAT_CHAR);
 
-                    //Enable local notifications
-                    gatt.setCharacteristicNotification(characteristic, true);
-                    //Enabled remote notifications
-                    BluetoothGattDescriptor desc1 = characteristic.getDescriptor(RECEIVER_STATUS_CONFIG);
-                    desc1.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
-                    gatt.writeDescriptor(desc1);
-                default:
-                    return;
-            }
 
+            //Enable local indications
+            boolean ret = gatt.setCharacteristicNotification(characteristic, true);
+
+            Log.d(TAG, "Notify set locally for characteristic: " + ret);
+            //Enabled remote indications
+            BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_STATUS_CONFIG);
+            boolean ret2 = desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+            Log.d(TAG, "Notify set locally for descriptor: " + ret2);
+            boolean ret3 = gatt.writeDescriptor(desc);
+            Log.d(TAG, "Writing to descriptor: " + ret3);
+        }
+
+        private void setIndicate(BluetoothGatt gatt) {
+            Log.d(TAG, "Setting Indicate for Command Client Responses");
+            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
+                    .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
+
+                setCharacteristicNotification(characteristic, true);
+
+//            //Enable local indications
+//            boolean ret = gatt.setCharacteristicNotification(characteristic, true);
+//
+//            Log.d(TAG, "Indication set locally for characteristic: " + ret);
+//            //Enabled remote indications
+//            BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
+//            boolean ret2 = desc.setValue(new byte[]{2});
+//            Log.d(TAG, "Indication set locally for descriptor: " + ret2);
+//            boolean ret3 = gatt.writeDescriptor(desc);
+//            Log.d(TAG, "Writing to descriptor: " + ret3);
         }
 
         private void authenticate(BluetoothGatt gatt) {
@@ -302,10 +323,18 @@ public class BLEService extends Service {
             BluetoothGattCharacteristic authChar = gatt.getService(RECEIVER_SERVICE)
                     .getCharacteristic(RECEIVER_AUTH_CHAR);
             authChar.setValue(AUTH_CODE);
-            gatt.writeCharacteristic(authChar);
+//            gatt.writeCharacteristic(authChar);
+            writeCharacteristic(authChar);
         }
 
         private void readCmdReponse(BluetoothGatt gatt) {
+            int delay = 1000;
+            Log.d(TAG, "Sleeping for " + delay + " ms");
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             Log.d(TAG, "Reading command response...");
             BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
                     .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
@@ -325,7 +354,8 @@ public class BLEService extends Service {
             }
 
             characteristic.setValue(ping);
-            gatt.writeCharacteristic(characteristic);
+            //gatt.writeCharacteristic(characteristic);
+            writeCharacteristic(characteristic);
         }
 
         private void getDescInfo(BluetoothGatt gatt) {
@@ -370,6 +400,14 @@ public class BLEService extends Service {
         bluetoothGatt.readCharacteristic(characteristic);
     }
 
+    public void writeCharacteristic(BluetoothGattCharacteristic characteristic) {
+        if (bluetoothAdapter == null || bluetoothGatt == null) {
+            Log.w(TAG, "BluetoothAdapter not initialized");
+            return;
+        }
+        bluetoothGatt.writeCharacteristic(characteristic);
+    }
+
     public void setCharacteristicNotification(BluetoothGattCharacteristic characteristic,
                                               boolean enabled) {
         if (bluetoothAdapter == null || bluetoothGatt == null) {
@@ -382,7 +420,7 @@ public class BLEService extends Service {
         if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
             BluetoothGattDescriptor descriptor = characteristic
                     .getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
-            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+            descriptor.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
             bluetoothGatt.writeDescriptor(descriptor);
         }
     }
@@ -394,15 +432,15 @@ public class BLEService extends Service {
             return false;
         }
         // Previously connected device.  Try to reconnect.
-        if (bluetoothDeviceAddress != null && address.equals(bluetoothDeviceAddress)
-                && bluetoothGatt != null) {
-            Log.d(TAG, "Trying to use an existing mBluetoothGatt for connection.");
-            if (bluetoothGatt.connect()) {
-                return true;
-            } else {
-                return false;
-            }
-        }
+//        if (bluetoothDeviceAddress != null && address.equals(bluetoothDeviceAddress)
+//                && bluetoothGatt != null) {
+//            Log.d(TAG, "Trying to use an existing mBluetoothGatt for connection.");
+//            if (bluetoothGatt.connect()) {
+//                return true;
+//            } else {
+//                return false;
+//            }
+//        }
 
         final BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
         if (device == null) {

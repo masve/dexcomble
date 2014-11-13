@@ -8,7 +8,7 @@ import java.util.zip.CRC32;
  * Created by marksv on 30/10/14.
  */
 public class PacketManager {
-    private final static byte[] ping = {0x01, 0x01, 0x01, 0x06, 0x00, 0x0A, 0x5E, 0x65};
+    private final static byte[] ping =  {0x01, 0x01, 0x01, 0x06, 0x00, 0x0A, 0x5E, 0x65};
     private final static byte[] ping2 = {0x01, 0x01, 0x01, 0x06, 0x00, 0x0A};
 
 
@@ -31,8 +31,8 @@ public class PacketManager {
     public static byte[] getPacket(int cmd) {
         switch (cmd) {
             case PING:
-                //return ping;
-                return generatePacket(ping, false);
+                return ping;
+                //return generatePacket(ping, false);
             case EGV_PAGE_RANGE:
                 return generatePacket(egvPageRangeNoCRC, true);
             case PAGE_RANGE:
