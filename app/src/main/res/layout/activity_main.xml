@@ -13,11 +13,34 @@
         android:textSize="42sp"
         android:id="@+id/textView" />
 
+    <EditText
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="SM42390264000000"
+        android:id="@+id/serial" />
+
+    <EditText
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="F6:15:99:2D:5D:88"
+        android:id="@+id/bleAddress" />
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Connect"
+        android:id="@+id/connectBtn" />
+
     <TableLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:stretchColumns="1"
         android:shrinkColumns="0">
+
+        <TableRow>
+
+            <TextView />
+        </TableRow>
 
         <TableRow>
 
@@ -149,5 +172,6 @@
 
 
     </TableLayout>
+
 
 </LinearLayout>

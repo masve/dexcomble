@@ -9,29 +9,22 @@ import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
-import android.bluetooth.BluetoothGattCallback;
-import android.bluetooth.BluetoothGattCharacteristic;
-import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothManager;
-import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Message;
 import android.util.Log;
 import android.util.SparseArray;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.Window;
+import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.UUID;
+import com.dtu.marksv.dexcomble2.BLEConstants.MSGCode;
 
 
 public class MainActivity extends Activity implements BluetoothAdapter.LeScanCallback {
@@ -49,6 +42,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     private TextView nameTextView, addressTextView, deviceTypeTextView, bondTextView;
     private TextView connectedTextView, authTextView;
     private TextView sugarTextView;
+    private Button connectButton;
 
     private Handler handler = new Handler();
 
@@ -66,6 +60,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         deviceTypeTextView = (TextView) findViewById(R.id.deviceTypeTextView);
         bondTextView = (TextView) findViewById(R.id.bondTextView);
         sugarTextView = (TextView) findViewById(R.id.sugarTextView);
+        connectButton = (Button) findViewById(R.id.connectBtn);
 
         /* Initiate bluetooth */
         BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
@@ -127,7 +122,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         /* Add any device elements we've discovered to the overflow menu */
         for (int i = 0; i < devices.size(); i++) {
             BluetoothDevice device = devices.valueAt(i);
-            menu.add(0, devices.keyAt(i), 0, device.getName());
+            menu.add(0, devices.keyAt(i), 0, device.getName() + " " + device.getAddress());
         }
 
         return true;
@@ -242,74 +237,30 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
 
-            if (action.equals(BLEService.MSG_PROGRESS)) {
-                String progressText = intent.getStringExtra(BLEService.EXTRA_DATA);
+            if (action.equals(MSGCode.PROGRESS.getValue())) {
+                String progressText = intent.getStringExtra(MSGCode.EXTRA_DATA.getValue());
                 setProgressMsg(progressText);
-            } else if (action.equals(BLEService.MSG_DISMISS)) {
+            } else if (action.equals(MSGCode.DISMISS.getValue())) {
                 progress.hide();
-            } else if (action.equals(BLEService.MSG_CLEAR)) {
+            } else if (action.equals(MSGCode.CLEAR.getValue())) {
                 //clearDisplay();
-            } else if (action.equals(BLEService.MSG_CONNECTION_STATUS)) {
-                setConnectionStatus(intent.getStringExtra(BLEService.EXTRA_DATA));
-            } else if (action.equals(BLEService.MSG_AUTH_STATUS)) {
-                setAuthStatus(intent.getStringExtra(BLEService.EXTRA_DATA));
+            } else if (action.equals(MSGCode.CONNECTION_STATUS.getValue())) {
+                String connectStatus = intent.getStringExtra(MSGCode.EXTRA_DATA.getValue());
+                setConnectionStatus(connectStatus);
+                if (connectStatus.equals("true")) {
+                    connectButton.setEnabled(false);
+                } else {
+                    connectButton.setEnabled(true);
+                }
+
+            } else if (action.equals(MSGCode.AUTH_STATUS.getValue())) {
+                setAuthStatus(intent.getStringExtra(MSGCode.EXTRA_DATA.getValue()));
+            } else if(action.equals(MSGCode.EGV_Update.getValue())) {
+                setSugarTextView(intent.getStringExtra(MSGCode.EXTRA_DATA.getValue()));
             }
 
         }
     };
-
-
-
-
-    /**
-     * Handler
-     * Handles UI updates from callback background thread to UI thread.
-     */
-//    public static final int MSG_PROGRESS = 101;
-//    public static final int MSG_DISMISS = 102;
-//    public static final int MSG_CLEAR = 201;
-//    public static final int MSG_CONNECTION_STATUS = 301;
-//    public static final int MSG_AUTH_STATUS = 302;
-//    public static final int MSG_STATUS = 401;
-//    private Handler handler = new Handler() {
-//        @Override
-//        public void handleMessage(Message msg) {
-//            BluetoothGattCharacteristic characteristic;
-//            switch (msg.what) {
-//                case MSG_PROGRESS:
-//                    progress.setMessage((String) msg.obj);
-//                    if (!progress.isShowing()) {
-//                        progress.show();
-//                    }
-//                    break;
-//                case MSG_DISMISS:
-//                    progress.hide();
-//                    break;
-//                case MSG_CLEAR:
-//                    //clearDisplay();
-//                    break;
-//                case MSG_CONNECTION_STATUS:
-//                    setConnectionStatus(isConnected);
-//                    break;
-//                case MSG_AUTH_STATUS:
-//                    setAuthStatus((String) msg.obj);
-//                    break;
-//                case MSG_STATUS:
-//                    characteristic = (BluetoothGattCharacteristic) msg.obj;
-//                    if (characteristic.getValue() == null) {
-//                        Log.w(TAG, "Error obtaining status value");
-//                        return;
-//                    }
-//                    StringBuilder result = new StringBuilder();
-//                    for (int i = 0; i < characteristic.getValue().length; i++) {
-//                        result.append(characteristic.getValue()[i]);
-//                    }
-//
-//                    Log.d(TAG, "Status Code: " + result.toString());
-//                    break;
-//            }
-//        }
-//    };
 
     /* Methods to update the UI */
     public void setNameTextView(String name) {
@@ -364,12 +315,14 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         connectedTextView.setText(status);
     }
 
+
+
     public void setAuthStatus(String status) {
         authTextView.setText(status);
     }
 
-    public void setSugarLevel(String level) {
-        authTextView.setText(level);
+    public void setSugarTextView(String value) {
+        sugarTextView.setText(value);
     }
 
     public void clearDisplay() {
@@ -388,11 +341,12 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
 
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(BLEService.MSG_PROGRESS);
-        intentFilter.addAction(BLEService.MSG_DISMISS);
-        intentFilter.addAction(BLEService.MSG_CLEAR);
-        intentFilter.addAction(BLEService.MSG_CONNECTION_STATUS);
-        intentFilter.addAction(BLEService.MSG_AUTH_STATUS);
+        intentFilter.addAction(MSGCode.PROGRESS.getValue());
+        intentFilter.addAction(MSGCode.DISMISS.getValue());
+        intentFilter.addAction(MSGCode.CLEAR.getValue());
+        intentFilter.addAction(MSGCode.CONNECTION_STATUS.getValue());
+        intentFilter.addAction(MSGCode.AUTH_STATUS.getValue());
+        intentFilter.addAction(MSGCode.EGV_Update.getValue());
         return intentFilter;
     }
 }

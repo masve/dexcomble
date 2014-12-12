@@ -12,13 +12,19 @@ import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
-import android.os.Message;
 import android.util.Log;
 
+import com.dtu.marksv.dexcomble2.BLEConstants.AuthStatus;
+import com.dtu.marksv.dexcomble2.BLEConstants.Command;
+import com.dtu.marksv.dexcomble2.BLEConstants.MSGCode;
+import com.dtu.marksv.dexcomble2.BLEConstants.Receiver;
+import com.dtu.marksv.dexcomble2.utils.Formatter;
+import com.dtu.marksv.dexcomble2.utils.PacketManager;
+import com.dtu.marksv.dexcomble2.utils.ParseEGV;
+
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * Created by mark on 01/11/14.
@@ -26,67 +32,32 @@ import java.util.UUID;
 public class BLEService extends Service {
 
     private static final String TAG = "BLEService";
-
-    public static final String MSG_PROGRESS =           "101";
-    public static final String MSG_DISMISS =            "102";
-    public static final String MSG_CLEAR =              "201";
-    public static final String MSG_CONNECTION_STATUS =  "301";
-    public static final String MSG_AUTH_STATUS =        "302";
-    public static final String EXTRA_DATA =             "EXTRA_DATA";
+    private static final int AUTH_SLEEPTIME  = 10000;
 
     public static final String DEVICE_NAME =  "DEXCOMRX";
     public static final String EXTENDED_SN1 = "SM42390263000000";
-    public static final String EXTENDED_SN2 = "SM42390264000000"; // dead
-    public static byte[] AUTH_CODE = EXTENDED_SN1.getBytes(StandardCharsets.US_ASCII);
+    public static final String EXTENDED_SN2 = "SM42390264000000";
+    private static final int EGV_UPDATE_INTERVAL = 1000 * 30; // 30 seconds
+    public static byte[] AUTH_CODE = EXTENDED_SN2.getBytes(StandardCharsets.US_ASCII);
 
-    /* SERVICE: Device Information  */
-    public static final UUID INFO_SERVICE =                 UUID.fromString("0000180A-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_MODEL_NUMBER_CHAR =       UUID.fromString("00002A24-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_HARDWARE_REVISION_CHAR =  UUID.fromString("00002A27-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_FIRMWARE_REVISION_CHAR =  UUID.fromString("00002A26-0000-1000-8000-00805F9B34FB");
-    public static final UUID INFO_MANUFACTURER_NAME_CHAR =  UUID.fromString("00002A29-0000-1000-8000-00805F9B34FB");
+    Handler handler = new Handler();
+    boolean isGettingEGV = false;
+    
 
-    /* SERVICE: TX Power  */
-    public static final UUID TX_POWER_SERVICE =             UUID.fromString("00001804-0000-1000-8000-00805F9B34FB");
-    public static final UUID TX_POWER_LEVEL_CHAR =          UUID.fromString("00002A07-0000-1000-8000-00805F9B34FB");
-
-    /* SERVICE: Gen4RcvService  */
-    public static final UUID RECEIVER_SERVICE =             UUID.fromString("F0ACA0B1-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_AUTH_CHAR =           UUID.fromString("F0ACACAC-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_STATUS_CHAR =         UUID.fromString("F0ACB0CD-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_HEARTBEAT_CHAR =      UUID.fromString("F0AC2B18-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_ARRAY_SVR_CHAR =      UUID.fromString("F0ACB20A-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_ARRAY_CLIENT_CHAR =   UUID.fromString("F0ACB20B-EBFA-F96F-28DA-076C35A521DB");
-    public static final UUID RECEIVER_SMARTPHONE_CMD_CHAR = UUID.fromString("F0ACB0CC-EBFA-F96F-28DA-076C35A521DB");
-
-    /* SERVICE: ShareTestService  */
-
-    /* DESCRIPTORS */
-    public static final UUID RECEIVER_STATUS_CONFIG =       UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
-    public static final UUID RECEIVER_ARRAY_CLIENT_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
-
-    /* RECEIVER_STATUS_CHAR response codes */
-    public static final String STATUS_VALID =       "1";
-    public static final String STATUS_INVALID =     "0";
-    public static final String STATUS_NOT_ENTERED = "X";
-
-    /* BLE Stuff */
-    private BluetoothManager bluetoothManager;
-    private BluetoothAdapter bluetoothAdapter;
-    private BluetoothGatt bluetoothGatt;
-    private String bluetoothDeviceAddress;
-    private boolean isConnected = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
 
+        stopEGVUpdater();
+        
         initialize();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        connect(intent.getStringExtra("address"));
+        bluetoothDeviceAddress = intent.getStringExtra("address");
+        connect(bluetoothDeviceAddress);
         return super.onStartCommand(intent, flags, startId);
     }
 
@@ -107,10 +78,11 @@ public class BLEService extends Service {
                  * Once successfully connected, we must next discover all the services on the
                  * device before we can read and write their characteristics.
                  */
+                stopEGVUpdater();
                 gatt.discoverServices();
 
-                broadcastUpdate(MSG_PROGRESS, "Discovering Services...");
-                broadcastUpdate(MSG_CONNECTION_STATUS, String.valueOf(isConnected));
+                broadcastUpdate(MSGCode.PROGRESS.getValue(), "Discovering Services...");
+                broadcastUpdate(MSGCode.CONNECTION_STATUS.getValue(), String.valueOf(isConnected));
 
             } else if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_DISCONNECTED) {
                 isConnected = false;
@@ -118,68 +90,85 @@ public class BLEService extends Service {
                  * If at any point we disconnect, send a message to clear the weather values
                  * out of the UI
                  */
-                broadcastUpdate(MSG_CLEAR);
-                broadcastUpdate(MSG_DISMISS);
-                broadcastUpdate(MSG_CONNECTION_STATUS, String.valueOf(isConnected));
+                Log.i(TAG, "Disconnected");
+                stopEGVUpdater();
+                broadcastUpdate(MSGCode.CLEAR.getValue());
+                broadcastUpdate(MSGCode.DISMISS.getValue());
+                broadcastUpdate(MSGCode.CONNECTION_STATUS.getValue(), String.valueOf(isConnected));
+
+
+                Log.i(TAG, "Trying to reconnect...");
+
+                // try to reconnect
+                connect(bluetoothDeviceAddress);
             } else if (status != BluetoothGatt.GATT_SUCCESS) {
                 /*
                  * If there is a failure at any stage, simply disconnect
                  */
+                Log.i(TAG, "Disconnected");
+                stopEGVUpdater();
                 gatt.disconnect();
                 close();
                 isConnected = false;
-                broadcastUpdate(MSG_CLEAR);
-                broadcastUpdate(MSG_DISMISS);
-                broadcastUpdate(MSG_CONNECTION_STATUS, String.valueOf(isConnected));
+                broadcastUpdate(MSGCode.CLEAR.getValue());
+                broadcastUpdate(MSGCode.DISMISS.getValue());
+                broadcastUpdate(MSGCode.CONNECTION_STATUS.getValue(), String.valueOf(isConnected));
+
+
             }
         }
 
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             Log.d(TAG, "Services Discovered");
-            broadcastUpdate(MSG_PROGRESS, "Securing Communication...");
+            broadcastUpdate(MSGCode.PROGRESS.getValue(), "Securing Communication...");
 
-            reset();
-//            readNextChar(gatt);
-//            setNextNotify(gatt);
+            try {
+                BluetoothGattCharacteristic authChar = gatt.getService(Receiver.SERVICE.getValue())
+                        .getCharacteristic(Receiver.AUTH_CHAR.getValue());
+            } catch (NullPointerException npe) {
+                Log.e(TAG, "Services not discovered. Retrying...");
+                gatt.discoverServices();
+            }
+
+            /*
+             * Reset custom BLE State Machine and start from beginning.
+             */
+            resetStateMachine();
             stateMachine(gatt);
-//            BluetoothGattService service = gatt.getService(RECEIVER_SERVICE);
-//            BluetoothGattCharacteristic characteristic = service.getCharacteristic(RECEIVER_STATUS_CHAR);
-//
-//            gatt.readCharacteristic(characteristic);
         }
 
         @Override
         public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
 
-            /* If a read has been called on RECEIVER_STATUS_CHAR read authentication ack code  */
-            if (characteristic.getUuid().equals(RECEIVER_STATUS_CHAR)) {
+            /* If a read has been called on Receiver.STATUS_CHAR read authentication ack code  */
+            if (characteristic.getUuid().equals(Receiver.STATUS_CHAR.getValue())) {
                 String statusCode = new String(characteristic.getValue());
                 String statusStr = "";
 
-                if (statusCode.equals(STATUS_VALID)) {
+                if (statusCode.equals(AuthStatus.VALID.getValue())) {
                     statusStr = "VALID";
-                    broadcastUpdate(MSG_DISMISS);
-                } else if (statusCode.equals(STATUS_INVALID)) {
+                    broadcastUpdate(MSGCode.DISMISS.getValue());
+                } else if (statusCode.equals(AuthStatus.INVALID.getValue())) {
                     statusStr = "INVALID";
-                } else if (statusCode.equals(STATUS_NOT_ENTERED)) {
+                } else if (statusCode.equals(AuthStatus.NOT_ENTERED.getValue())) {
                     statusStr = "CODE NOT ENTERED";
                 }
 
-                Log.d(TAG, "Authentication Status Response: " + statusStr);
+                Log.i(TAG, "Authentication Status Response: " + statusStr);
                 if (statusStr.equals("VALID")) {
-                    advance();
+                    advanceStateMachine();
                     stateMachine(gatt);
                 }
 
-                broadcastUpdate(MSG_AUTH_STATUS, statusStr);
+                broadcastUpdate(MSGCode.AUTH_STATUS.getValue(), statusStr);
             }
 
-            if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
-                Log.d(TAG, "Reading result from server");
+            if (characteristic.getUuid().equals(Receiver.ARRAY_CLIENT_CHAR.getValue())) {
+                Log.i(TAG, "Reading result from server");
                 byte[] response = characteristic.getValue();
                 for (int i = 0; i < response.length; i++) {
-                    Log.d(TAG, " - array[" + i + "] : " + response[i]);
+                    Log.i(TAG, " - array[" + i + "] : " + response[i]);
                 }
             }
         }
@@ -187,32 +176,73 @@ public class BLEService extends Service {
         @Override
         public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
             /* Check authentication status, if auth char is written to */
-            if (characteristic.getUuid().equals(RECEIVER_AUTH_CHAR)) {
-                BluetoothGattCharacteristic status_char = gatt.getService(RECEIVER_SERVICE)
-                        .getCharacteristic(RECEIVER_STATUS_CHAR);
+
+            if (characteristic.getUuid().equals(Receiver.AUTH_CHAR.getValue())) {
+
+                try {
+                    Log.i(TAG, "Sleeping for " + AUTH_SLEEPTIME + " ms");
+                    Thread.sleep(AUTH_SLEEPTIME);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                BluetoothGattCharacteristic status_char = gatt.getService(Receiver.SERVICE.getValue())
+                        .getCharacteristic(Receiver.STATUS_CHAR.getValue());
 
                 /* Read the authentication ack response */
                 gatt.readCharacteristic(status_char);
             }
-            if (characteristic.getUuid().equals(RECEIVER_ARRAY_SVR_CHAR)) {
-                Log.d(TAG, "Command Written!");
+            if (characteristic.getUuid().equals(Receiver.ARRAY_SVR_CHAR.getValue())) {
+                Log.i(TAG, "Command Written!");
 
             }
         }
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            if (characteristic.getUuid().equals(RECEIVER_STATUS_CHAR)) {
+
+            byte[] data = characteristic.getValue();
+
+            if (characteristic.getUuid().equals(Receiver.STATUS_CHAR.getValue())) {
                 Status(characteristic);
             }
-            if (characteristic.getUuid().equals(RECEIVER_HEARTBEAT_CHAR)) {
+            if (characteristic.getUuid().equals(Receiver.HEARTBEAT_CHAR.getValue())) {
                 Log.d(TAG, "HEARTBEAT");
             }
-            if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
-                Log.d(TAG, "Read some Characteristic Value: ");
-                for (int i = 0; i < characteristic.getValue().length; i++) {
-                    Log.d(TAG, " - array[" + i + "] : " + characteristic.getValue()[i]);
+            if (characteristic.getUuid().equals(Receiver.ARRAY_CLIENT_CHAR.getValue())) {
+                //Log.i(TAG, "Returned from Gatt Server: ");
+
+                Log.i(TAG, Formatter.beautifulBytes(data));
+
+                ResponseManager responseManager = ResponseManager.getInstance();
+                responseManager.processResponse(data);
+
+                if(responseManager.processResult() == null) {
+                    // do nothing, not finished yet
+                } else if(responseManager.processResult() == Command.GET_EGV_PAGE_RANGE) {
+                    getLatestEGV(gatt, responseManager.getAccumulatedResponse());
+                    responseManager.resetResponseBuffer();
+                } else if(responseManager.processResult() == Command.GET_EGV_PAGE) {
+                    String egv = String.valueOf(ParseEGV.getLatestEGV(responseManager.getAccumulatedResponse()));
+                    Log.i(TAG, "LAST EGV VALUE: " + egv);
+                    broadcastUpdate(MSGCode.EGV_Update.getValue(), egv);
+                    isGettingEGV = false;
+                    responseManager.resetResponseBuffer();
                 }
+
+
+
+                /*
+
+                if response is a egv page range
+                    then make request packet for egv read and send to svr
+
+                if response is egv value
+                    then publish value to UI
+                 */
+
+
+
             }
         }
 
@@ -220,9 +250,9 @@ public class BLEService extends Service {
         public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
 
 
-            if (descriptor.getUuid().equals(RECEIVER_ARRAY_CLIENT_CONFIG)) {
-                Log.d(TAG, "Wrote to: " + RECEIVER_ARRAY_CLIENT_CONFIG.toString() + " Status: " + status);
-                advance();
+            if (descriptor.getUuid().equals(Receiver.ARRAY_CLIENT_CONFIG.getValue())) {
+                Log.i(TAG, "Wrote to: " + Receiver.ARRAY_CLIENT_CONFIG.getValue().toString() + " Status: " + status);
+                advanceStateMachine();
                 stateMachine(gatt);
             }
         }
@@ -247,128 +277,113 @@ public class BLEService extends Service {
             }
         }
 
-        private int state = 0;
-
-        private void reset() {
-            state = 0;
-        }
-
-        private void advance() {
-            state++;
-        }
-
-        public void stateMachine(BluetoothGatt gatt) {
-            switch (state) {
-                case 0:
-                    authenticate(gatt);
-                    break;
-                case 1:
-                    setIndicate(gatt);
-                    break;
-//                case 1:
-//                    setNofity(gatt);
-//                    break;
-                case 2:
-                    pingDevice(gatt);
-                    break;
-//                case 3:
-//                    readCmdReponse(gatt);
-//                    break;
-                default:
-                    Log.d(TAG, "stateMachine() default: " + state);
-                    break;
-            }
-        }
-
-        private void setNofity(BluetoothGatt gatt) {
-            Log.d(TAG, "Setting Notify for Heartbeat");
-            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_HEARTBEAT_CHAR);
-
-
-            //Enable local indications
-            boolean ret = gatt.setCharacteristicNotification(characteristic, true);
-
-            Log.d(TAG, "Notify set locally for characteristic: " + ret);
-            //Enabled remote indications
-            BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_STATUS_CONFIG);
-            boolean ret2 = desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            Log.d(TAG, "Notify set locally for descriptor: " + ret2);
-            boolean ret3 = gatt.writeDescriptor(desc);
-            Log.d(TAG, "Writing to descriptor: " + ret3);
-        }
-
-        private void setIndicate(BluetoothGatt gatt) {
-            Log.d(TAG, "Setting Indicate for Command Client Responses");
-            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
-
-                setCharacteristicNotification(characteristic, true);
-
-//            //Enable local indications
-//            boolean ret = gatt.setCharacteristicNotification(characteristic, true);
-//
-//            Log.d(TAG, "Indication set locally for characteristic: " + ret);
-//            //Enabled remote indications
-//            BluetoothGattDescriptor desc = characteristic.getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
-//            boolean ret2 = desc.setValue(new byte[]{2});
-//            Log.d(TAG, "Indication set locally for descriptor: " + ret2);
-//            boolean ret3 = gatt.writeDescriptor(desc);
-//            Log.d(TAG, "Writing to descriptor: " + ret3);
-        }
-
-        private void authenticate(BluetoothGatt gatt) {
-            /* Writing authentication code */
-            Log.d(TAG, "Authenticating...");
-            BluetoothGattCharacteristic authChar = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_AUTH_CHAR);
-            authChar.setValue(AUTH_CODE);
-//            gatt.writeCharacteristic(authChar);
-            writeCharacteristic(authChar);
-        }
-
-        private void readCmdReponse(BluetoothGatt gatt) {
-            int delay = 1000;
-            Log.d(TAG, "Sleeping for " + delay + " ms");
-            try {
-                Thread.sleep(delay);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            Log.d(TAG, "Reading command response...");
-            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_ARRAY_CLIENT_CHAR);
-
-            gatt.readCharacteristic(characteristic);
-        }
-
-        private void pingDevice(BluetoothGatt gatt) {
-            Log.d(TAG, "Pinging device...");
-            BluetoothGattCharacteristic characteristic = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristic(RECEIVER_ARRAY_SVR_CHAR);
-
-            byte[] ping = PacketManager.getPacket(PacketManager.PING);
-            Log.d(TAG, "Pinging with: ");
-            for (int i = 0; i < ping.length; i++) {
-                Log.d(TAG, " - array[" + i + "] : " + ping[i]);
-            }
-
-            characteristic.setValue(ping);
-            //gatt.writeCharacteristic(characteristic);
-            writeCharacteristic(characteristic);
-        }
-
-        private void getDescInfo(BluetoothGatt gatt) {
-            List<BluetoothGattCharacteristic> listChars = gatt.getService(RECEIVER_SERVICE)
-                    .getCharacteristics();
-            for (BluetoothGattCharacteristic entry : listChars) {
-                for (BluetoothGattDescriptor desc : entry.getDescriptors()) {
-                    Log.d(TAG, "CHAR: " + entry.getUuid().toString() + " / DESC: " + desc.getUuid().toString());
-                }
-            }
-        }
 
     };
+
+    // Application Specific BLE Stuff
+
+    private void getLatestEGV(BluetoothGatt gatt, byte[] pageRangeResponse) {
+        Log.i(TAG, "Getting latest EGV value...");
+        BluetoothGattCharacteristic characteristic = gatt.getService(Receiver.SERVICE.getValue())
+                .getCharacteristic(Receiver.ARRAY_SVR_CHAR.getValue());
+
+        byte[] egvCmd = PacketManager.getPacket(Command.GET_EGV_PAGE, pageRangeResponse);
+        Log.i(TAG, "Sending EGV request command: ");
+        Log.i(TAG, Formatter.beautifulBytes(egvCmd));
+
+        ResponseManager responseManager = ResponseManager.getInstance();
+        responseManager.setNextCommand(Command.GET_EGV_PAGE);
+
+        characteristic.setValue(egvCmd);
+        writeCharacteristic(characteristic);
+    }
+
+    private int state = 0;
+    private boolean responseIsPageRange;
+
+    private void resetStateMachine() {
+        state = 0;
+    }
+
+    private void advanceStateMachine() {
+        state++;
+    }
+
+    public void stateMachine(BluetoothGatt gatt) {
+        switch (state) {
+            case 0:
+                authenticate(gatt);
+                break;
+            case 1:
+                setIndicate(gatt);
+                break;
+            case 2:
+                //getEGVPageRange(gatt);
+                startEGVUpdater();
+                break;
+            default:
+                Log.d(TAG, "stateMachine() default: " + state);
+                break;
+        }
+    }
+
+    private void setIndicate(BluetoothGatt gatt) {
+        Log.i(TAG, "Setting Indicate for Command Client Responses");
+        BluetoothGattCharacteristic characteristic = gatt.getService(Receiver.SERVICE.getValue())
+                .getCharacteristic(Receiver.ARRAY_CLIENT_CHAR.getValue());
+
+        setCharacteristicNotification(characteristic, true);
+    }
+
+    private void authenticate(BluetoothGatt gatt) {
+            /* Writing authentication code */
+        Log.i(TAG, "Authenticating...");
+        BluetoothGattCharacteristic authChar = gatt.getService(Receiver.SERVICE.getValue())
+                .getCharacteristic(Receiver.AUTH_CHAR.getValue());
+        authChar.setValue(AUTH_CODE);
+        writeCharacteristic(authChar);
+    }
+
+    private void pingDevice(BluetoothGatt gatt) {
+        Log.i(TAG, "Pinging device...");
+        BluetoothGattCharacteristic characteristic = gatt.getService(Receiver.SERVICE.getValue())
+                .getCharacteristic(Receiver.ARRAY_SVR_CHAR.getValue());
+
+        byte[] ping = PacketManager.getPacket(Command.PING, null);
+        Log.i(TAG, "Pinging with: ");
+        for (int i = 0; i < ping.length; i++) {
+            Log.i(TAG, " - array[" + i + "] : " + ping[i]);
+        }
+
+        characteristic.setValue(ping);
+        writeCharacteristic(characteristic);
+    }
+
+    private void getBattery(BluetoothGatt gatt) {
+
+    }
+
+    private void getEGV(BluetoothGatt gatt) {
+
+    }
+
+    private void getEGVPageRange(BluetoothGatt gatt) {
+        Log.i(TAG, "Getting EGV page range...");
+        BluetoothGattCharacteristic characteristic = gatt.getService(Receiver.SERVICE.getValue())
+                .getCharacteristic(Receiver.ARRAY_SVR_CHAR.getValue());
+
+        byte[] rangeCmd = PacketManager.getPacket(Command.GET_EGV_PAGE_RANGE, null);
+        Log.i(TAG, "Sending EGV page range command: ");
+        Log.i(TAG, Formatter.beautifulBytes(rangeCmd));
+
+        ResponseManager responseManager = ResponseManager.getInstance();
+        responseManager.setNextCommand(Command.GET_EGV_PAGE_RANGE);
+
+        characteristic.setValue(rangeCmd);
+        writeCharacteristic(characteristic);
+    }
+
+    // Broadcasting
 
     private void broadcastUpdate(final String action) {
         final Intent intent = new Intent(action);
@@ -378,7 +393,7 @@ public class BLEService extends Service {
     private void broadcastUpdate(final String action, final String msg) {
         final Intent intent = new Intent(action);
         Bundle extras = new Bundle();
-        extras.putString(EXTRA_DATA, msg);
+        extras.putString(MSGCode.EXTRA_DATA.getValue(), msg);
         intent.putExtras(extras);
         sendBroadcast(intent);
     }
@@ -391,6 +406,39 @@ public class BLEService extends Service {
         sendBroadcast(intent);
     }
 
+    //LOGGING
+
+    public void Status(BluetoothGattCharacteristic characteristic) {
+        if (characteristic.getValue() == null) {
+            Log.w(TAG, "Error obtaining status value");
+            return;
+        }
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < characteristic.getValue().length; i++) {
+            result.append(characteristic.getValue()[i]);
+        }
+
+        Log.d(TAG, "Status Code: " + result.toString());
+    }
+
+
+
+
+    // Standard BLE Stuff
+
+    private BluetoothManager bluetoothManager;
+    private BluetoothAdapter bluetoothAdapter;
+    private BluetoothGatt bluetoothGatt;
+    private String bluetoothDeviceAddress;
+    private boolean isConnected = false;
+
+    public void writeCharacteristic(BluetoothGattCharacteristic characteristic) {
+        if (bluetoothAdapter == null || bluetoothGatt == null) {
+            Log.w(TAG, "BluetoothAdapter not initialized");
+            return;
+        }
+        bluetoothGatt.writeCharacteristic(characteristic);
+    }
 
     public void readCharacteristic(BluetoothGattCharacteristic characteristic) {
         if (bluetoothAdapter == null || bluetoothGatt == null) {
@@ -400,13 +448,25 @@ public class BLEService extends Service {
         bluetoothGatt.readCharacteristic(characteristic);
     }
 
-    public void writeCharacteristic(BluetoothGattCharacteristic characteristic) {
-        if (bluetoothAdapter == null || bluetoothGatt == null) {
-            Log.w(TAG, "BluetoothAdapter not initialized");
-            return;
+    public boolean initialize() {
+        if (bluetoothManager == null) {
+            bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+            if (bluetoothManager == null) {
+                Log.e(TAG, "Unable to initialize BluetoothManager.");
+                return false;
+            }
         }
-        bluetoothGatt.writeCharacteristic(characteristic);
+
+        bluetoothAdapter = bluetoothManager.getAdapter();
+        if (bluetoothAdapter == null) {
+            Log.e(TAG, "Unable to obtain a BluetoothAdapter.");
+            return false;
+        }
+
+        return true;
     }
+
+
 
     public void setCharacteristicNotification(BluetoothGattCharacteristic characteristic,
                                               boolean enabled) {
@@ -417,9 +477,9 @@ public class BLEService extends Service {
         bluetoothGatt.setCharacteristicNotification(characteristic, enabled);
 
         // This is specific to CMD Responses.
-        if (characteristic.getUuid().equals(RECEIVER_ARRAY_CLIENT_CHAR)) {
+        if (characteristic.getUuid().equals(Receiver.ARRAY_CLIENT_CHAR.getValue())) {
             BluetoothGattDescriptor descriptor = characteristic
-                    .getDescriptor(RECEIVER_ARRAY_CLIENT_CONFIG);
+                    .getDescriptor(Receiver.ARRAY_CLIENT_CONFIG.getValue());
             descriptor.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
             bluetoothGatt.writeDescriptor(descriptor);
         }
@@ -431,16 +491,6 @@ public class BLEService extends Service {
             Log.w(TAG, "BluetoothAdapter not initialized or unspecified address.");
             return false;
         }
-        // Previously connected device.  Try to reconnect.
-//        if (bluetoothDeviceAddress != null && address.equals(bluetoothDeviceAddress)
-//                && bluetoothGatt != null) {
-//            Log.d(TAG, "Trying to use an existing mBluetoothGatt for connection.");
-//            if (bluetoothGatt.connect()) {
-//                return true;
-//            } else {
-//                return false;
-//            }
-//        }
 
         final BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
         if (device == null) {
@@ -471,37 +521,33 @@ public class BLEService extends Service {
         bluetoothGatt = null;
     }
 
-    public boolean initialize() {
-        if (bluetoothManager == null) {
-            bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-            if (bluetoothManager == null) {
-                Log.e(TAG, "Unable to initialize BluetoothManager.");
-                return false;
+    // EGV UPDATER
+
+    private Runnable egvUpdater = new Runnable() {
+        @Override
+        public void run() {
+
+            if (!isGettingEGV) {
+                Log.i(TAG, "Starting new EGV Procedure...");
+                isGettingEGV = true;
+                getEGVPageRange(bluetoothGatt);
+            } else {
+                Log.i(TAG, "Getting-EGV-Procedure already in progress");
             }
-        }
 
-        bluetoothAdapter = bluetoothManager.getAdapter();
-        if (bluetoothAdapter == null) {
-            Log.e(TAG, "Unable to obtain a BluetoothAdapter.");
-            return false;
+            handler.postDelayed(this, EGV_UPDATE_INTERVAL);
         }
+    };
 
-        return true;
+    private void startEGVUpdater() {
+        egvUpdater.run();
+
     }
 
-    //LOGGING
-
-    public void Status(BluetoothGattCharacteristic characteristic) {
-        if (characteristic.getValue() == null) {
-            Log.w(TAG, "Error obtaining status value");
-            return;
-        }
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < characteristic.getValue().length; i++) {
-            result.append(characteristic.getValue()[i]);
-        }
-
-        Log.d(TAG, "Status Code: " + result.toString());
+    private void stopEGVUpdater() {
+        handler.removeCallbacks(egvUpdater);
+        isGettingEGV = false;
     }
+
 }
 
