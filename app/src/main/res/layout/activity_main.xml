@@ -30,10 +30,15 @@
         android:layout_height="wrap_content"
         android:text="Connect"
         android:id="@+id/connectBtn" />
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="fill_parent"
+        android:fillViewport="true"
+        android:fadeScrollbars="false">
 
     <TableLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="fill_parent"
         android:stretchColumns="1"
         android:shrinkColumns="0">
 
@@ -170,8 +175,26 @@
                 android:id="@+id/sugarTextView" />
         </TableRow>
 
+        <TableRow>
 
+            <TextView />
+        </TableRow>
+
+        <TableRow>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Disconnect Date    "
+                android:textSize="20sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="20sp"
+                android:id="@+id/disconnectTime"/>
+        </TableRow>
     </TableLayout>
-
+</ScrollView>
 
 </LinearLayout>

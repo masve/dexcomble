@@ -36,6 +36,7 @@ public class ParseEGV {
             int expectedRecords = data.length / 13;
            List<EGVRecord> records = new ArrayList<EGVRecord>();
 
+
             for (int i = 0; i < expectedRecords; i++) {
                 // parse egv record
                 int[] recordData = CommonUtils.cutValue(data, i * 13, 13);

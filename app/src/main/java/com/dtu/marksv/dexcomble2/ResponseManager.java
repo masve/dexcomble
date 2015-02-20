@@ -28,13 +28,13 @@ public class ResponseManager {
     }
 
     public void processResponse(byte[] data) {
-        if(data == null) return;
+        if (data == null) return;
 
         if (accumulatedResponse.isEmpty()) {
             responseLength = (data[2] << 8) | data[1];
             Collections.addAll(accumulatedResponse, ArrayUtils.toObject(data));
         } else {
-            if (accumulatedResponse.size()+data.length > responseLength) {
+            if (accumulatedResponse.size() + data.length > responseLength) {
 
             } else {
                 Collections.addAll(accumulatedResponse, ArrayUtils.toObject(data));
@@ -54,14 +54,12 @@ public class ResponseManager {
 
                 default:
                     return null;
-
             }
 
         } else {
             // not done yet
             return null;
         }
-
     }
 
     public void setNextCommand(Command nextCommand) {

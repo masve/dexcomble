@@ -26,6 +26,10 @@ import android.widget.TextView;
 
 import com.dtu.marksv.dexcomble2.BLEConstants.MSGCode;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
 
 public class MainActivity extends Activity implements BluetoothAdapter.LeScanCallback {
 
@@ -42,6 +46,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
     private TextView nameTextView, addressTextView, deviceTypeTextView, bondTextView;
     private TextView connectedTextView, authTextView;
     private TextView sugarTextView;
+    private TextView disconnectTimeTextView;
     private Button connectButton;
 
     private Handler handler = new Handler();
@@ -61,6 +66,7 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         bondTextView = (TextView) findViewById(R.id.bondTextView);
         sugarTextView = (TextView) findViewById(R.id.sugarTextView);
         connectButton = (Button) findViewById(R.id.connectBtn);
+        disconnectTimeTextView = (TextView) findViewById(R.id.disconnectTime);
 
         /* Initiate bluetooth */
         BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
@@ -253,6 +259,10 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
                     connectButton.setEnabled(true);
                 }
 
+                if (connectStatus.equals("false")) {
+                    setDisconnectTime();
+                }
+
             } else if (action.equals(MSGCode.AUTH_STATUS.getValue())) {
                 setAuthStatus(intent.getStringExtra(MSGCode.EXTRA_DATA.getValue()));
             } else if(action.equals(MSGCode.EGV_Update.getValue())) {
@@ -315,7 +325,11 @@ public class MainActivity extends Activity implements BluetoothAdapter.LeScanCal
         connectedTextView.setText(status);
     }
 
-
+    public void setDisconnectTime() {
+        Date date = new Date();
+        DateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        disconnectTimeTextView.setText(disconnectTimeTextView.getText() + "\n" + formatter.format(date));
+    }
 
     public void setAuthStatus(String status) {
         authTextView.setText(status);

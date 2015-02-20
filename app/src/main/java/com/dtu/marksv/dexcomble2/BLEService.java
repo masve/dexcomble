@@ -79,6 +79,7 @@ public class BLEService extends Service {
                  * device before we can read and write their characteristics.
                  */
                 stopEGVUpdater();
+                resetStateMachine();
                 gatt.discoverServices();
 
                 broadcastUpdate(MSGCode.PROGRESS.getValue(), "Discovering Services...");
@@ -92,15 +93,18 @@ public class BLEService extends Service {
                  */
                 Log.i(TAG, "Disconnected");
                 stopEGVUpdater();
+                resetStateMachine();
                 broadcastUpdate(MSGCode.CLEAR.getValue());
                 broadcastUpdate(MSGCode.DISMISS.getValue());
                 broadcastUpdate(MSGCode.CONNECTION_STATUS.getValue(), String.valueOf(isConnected));
 
+                ResponseManager responseManager = ResponseManager.getInstance();
+                responseManager.resetResponseBuffer();
 
                 Log.i(TAG, "Trying to reconnect...");
 
                 // try to reconnect
-                connect(bluetoothDeviceAddress);
+                reconnect(bluetoothDeviceAddress, gatt);
             } else if (status != BluetoothGatt.GATT_SUCCESS) {
                 /*
                  * If there is a failure at any stage, simply disconnect
@@ -108,7 +112,7 @@ public class BLEService extends Service {
                 Log.i(TAG, "Disconnected");
                 stopEGVUpdater();
                 gatt.disconnect();
-                close();
+                reconnect(bluetoothDeviceAddress, gatt);
                 isConnected = false;
                 broadcastUpdate(MSGCode.CLEAR.getValue());
                 broadcastUpdate(MSGCode.DISMISS.getValue());
@@ -128,7 +132,8 @@ public class BLEService extends Service {
                         .getCharacteristic(Receiver.AUTH_CHAR.getValue());
             } catch (NullPointerException npe) {
                 Log.e(TAG, "Services not discovered. Retrying...");
-                gatt.discoverServices();
+                //gatt.discoverServices();
+                reconnect(bluetoothDeviceAddress, gatt);
             }
 
             /*
@@ -212,9 +217,13 @@ public class BLEService extends Service {
             if (characteristic.getUuid().equals(Receiver.ARRAY_CLIENT_CHAR.getValue())) {
                 //Log.i(TAG, "Returned from Gatt Server: ");
 
-                Log.i(TAG, Formatter.beautifulBytes(data));
-
                 ResponseManager responseManager = ResponseManager.getInstance();
+
+                if (data[0] == 0x01) {
+                    responseManager.resetResponseBuffer();
+                }
+
+                Log.i(TAG, Formatter.beautifulBytes(data));
                 responseManager.processResponse(data);
 
                 if(responseManager.processResult() == null) {
@@ -229,9 +238,6 @@ public class BLEService extends Service {
                     isGettingEGV = false;
                     responseManager.resetResponseBuffer();
                 }
-
-
-
                 /*
 
                 if response is a egv page range
@@ -240,9 +246,6 @@ public class BLEService extends Service {
                 if response is egv value
                     then publish value to UI
                  */
-
-
-
             }
         }
 
@@ -280,6 +283,8 @@ public class BLEService extends Service {
 
     };
 
+
+
     // Application Specific BLE Stuff
 
     private void getLatestEGV(BluetoothGatt gatt, byte[] pageRangeResponse) {
@@ -299,12 +304,9 @@ public class BLEService extends Service {
     }
 
     private int state = 0;
-    private boolean responseIsPageRange;
-
     private void resetStateMachine() {
         state = 0;
     }
-
     private void advanceStateMachine() {
         state++;
     }
@@ -312,13 +314,15 @@ public class BLEService extends Service {
     public void stateMachine(BluetoothGatt gatt) {
         switch (state) {
             case 0:
+                // Perform authenticate procedure
                 authenticate(gatt);
                 break;
             case 1:
+                // Sets notifications for output characteristic
                 setIndicate(gatt);
                 break;
             case 2:
-                //getEGVPageRange(gatt);
+                // Start Glucose fetching procedure
                 startEGVUpdater();
                 break;
             default:
@@ -337,11 +341,17 @@ public class BLEService extends Service {
 
     private void authenticate(BluetoothGatt gatt) {
             /* Writing authentication code */
+        try{
         Log.i(TAG, "Authenticating...");
         BluetoothGattCharacteristic authChar = gatt.getService(Receiver.SERVICE.getValue())
                 .getCharacteristic(Receiver.AUTH_CHAR.getValue());
         authChar.setValue(AUTH_CODE);
         writeCharacteristic(authChar);
+        }
+        catch (NullPointerException ex) {
+            resetStateMachine();
+            Log.i(TAG, "Could not get Gatt Service");
+        }
     }
 
     private void pingDevice(BluetoothGatt gatt) {
@@ -376,8 +386,7 @@ public class BLEService extends Service {
         Log.i(TAG, "Sending EGV page range command: ");
         Log.i(TAG, Formatter.beautifulBytes(rangeCmd));
 
-        ResponseManager responseManager = ResponseManager.getInstance();
-        responseManager.setNextCommand(Command.GET_EGV_PAGE_RANGE);
+        ResponseManager.getInstance().setNextCommand(Command.GET_EGV_PAGE_RANGE);
 
         characteristic.setValue(rangeCmd);
         writeCharacteristic(characteristic);
@@ -485,6 +494,15 @@ public class BLEService extends Service {
         }
     }
 
+    private void reconnect(String bluetoothDeviceAddress, BluetoothGatt gatt) {
+        gatt.close();
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        connect(bluetoothDeviceAddress);
+    }
 
     public boolean connect(String address) {
         if (bluetoothAdapter == null || address == null) {
@@ -545,6 +563,7 @@ public class BLEService extends Service {
     }
 
     private void stopEGVUpdater() {
+        Log.i(TAG, "Stopping EGV Loop Handler");
         handler.removeCallbacks(egvUpdater);
         isGettingEGV = false;
     }
